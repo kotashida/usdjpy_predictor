@@ -26,7 +26,7 @@ This project predicts the daily closing price of the USD/JPY exchange rate using
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/usdjpy_predictor.git
+    git clone https://github.com/kotashida/usdjpy_predictor.git
     cd usdjpy_predictor
     ```
 
