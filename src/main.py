@@ -1,5 +1,7 @@
+import os
+import requests
+from dotenv import load_dotenv
 import pandas as pd
-import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.ensemble import RandomForestRegressor
@@ -11,6 +13,45 @@ from tensorflow.keras.layers import LSTM, Dense
 import numpy as np
 import ta
 
+def fetch_usdjpy_data():
+    load_dotenv()
+    api_key = os.getenv("ALPHA_VANTAGE_API_KEY")
+    if not api_key:
+        print("Error: ALPHA_VANTAGE_API_KEY not found in .env file.")
+        return False
+
+    url = f"https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=USD&to_symbol=JPY&apikey={api_key}&outputsize=full"
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+
+        if "Time Series FX (Daily)" not in data:
+            print("Error: Could not fetch data.")
+            print("Response from server:", data)
+            return False
+
+        df = pd.DataFrame.from_dict(data["Time Series FX (Daily)"], orient="index")
+        df.index = pd.to_datetime(df.index)
+        df = df.rename(columns={
+            "1. open": "open",
+            "2. high": "high",
+            "3. low": "low",
+            "4. close": "close"
+        })
+        df = df.apply(pd.to_numeric)
+        df = df.sort_index()
+
+        file_path = "data/usdjpy_daily.csv"
+        df.to_csv(file_path, index_label="date")
+        print(f"Successfully saved data to {file_path}")
+        return True
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching data from Alpha Vantage: {e}")
+        return False
+
 def create_sequences(data, sequence_length):
     xs, ys = [], []
     for i in range(len(data) - sequence_length):
@@ -21,8 +62,18 @@ def create_sequences(data, sequence_length):
     return np.array(xs), np.array(ys)
 
 def run_model_comparison():
+    # Fetch the latest data
+    if not fetch_usdjpy_data():
+        print("Exiting due to data fetching failure.")
+        return
+
     # Data Processing and Feature Engineering
-    df = pd.read_csv("usdjpy_daily.csv", index_col="date", parse_dates=True)
+    try:
+        df = pd.read_csv("data/usdjpy_daily.csv", index_col="date", parse_dates=True)
+    except FileNotFoundError:
+        print("Error: data/usdjpy_daily.csv not found. Please ensure data is fetched correctly.")
+        return
+
     df['target'] = df['close'].shift(-1)
 
     # Add technical indicators
@@ -93,8 +144,8 @@ def run_model_comparison():
     y_train_lstm, y_test_lstm = y_lstm[:train_size_lstm], y_lstm[train_size_lstm:]
 
     lstm_model = Sequential([
-        LSTM(lstm_units, activation='relu', return_sequences=True, input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])),
-        LSTM(lstm_units, activation='relu'),
+        LSTM(lstm_units, activation='tanh', return_sequences=True, input_shape=(X_train_lstm.shape[1], X_train_lstm.shape[2])),
+        LSTM(lstm_units, activation='tanh'),
         Dense(1)
     ])
     lstm_model.compile(optimizer='adam', loss='mse') # Consider other optimizers like 'RMSprop'
